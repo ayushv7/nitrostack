@@ -60,6 +60,17 @@ describe('Init Command', () => {
     }
   });
 
+  describe('sanitizeServerName', () => {
+    it('extracts basename and strips quotes/backslashes', async () => {
+      const { sanitizeServerName } = await import('../commands/init.js');
+      expect(sanitizeServerName('./path/to/my-mcp')).toBe('my-mcp');
+      expect(sanitizeServerName("user's-\"cool\"`server`\\tool")).toBe('users-coolservertool');
+      expect(sanitizeServerName('   spaced-server   ')).toBe('spaced-server');
+      expect(sanitizeServerName('')).toBe('mcp-server');
+      expect(sanitizeServerName("'''")).toBe('mcp-server');
+    });
+  });
+
   describe('updateAppModuleServerName', () => {
     it('updates calculator-server in src/app.module.ts to the new project name', async () => {
       const { updateAppModuleServerName } = await import('../commands/init.js');
@@ -129,23 +140,23 @@ export class AppModule {}`;
       }
     });
 
-    it('updates createServer name in src/index.ts if present', async () => {
+    it('sanitizes paths and quotes when updating src/app.module.ts', async () => {
       const { updateAppModuleServerName } = await import('../commands/init.js');
-      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-createserver-'));
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-sanitize-'));
 
       try {
         const srcDir = path.join(projectDir, 'src');
         await fs.mkdir(srcDir, { recursive: true });
 
-        const indexContent = `const server = createServer({\n  name: 'old-server-name',\n  version: '1.0.0',\n});\nserver.start();`;
-        await fs.writeFile(path.join(srcDir, 'index.ts'), indexContent, 'utf-8');
+        const content = `@McpApp({\n  server: {\n    name: 'calculator-server',\n    version: '1.0.0'\n  }\n})\nexport class AppModule {}`;
+        await fs.writeFile(path.join(srcDir, 'app.module.ts'), content, 'utf-8');
 
-        const updated = updateAppModuleServerName(projectDir, 'new-server-name');
+        const updated = updateAppModuleServerName(projectDir, "./nested/user's-mcp");
         expect(updated).toBe(true);
 
-        const result = await fs.readFile(path.join(srcDir, 'index.ts'), 'utf-8');
-        expect(result).toContain("name: 'new-server-name'");
-        expect(result).not.toContain("name: 'old-server-name'");
+        const result = await fs.readFile(path.join(srcDir, 'app.module.ts'), 'utf-8');
+        expect(result).toContain("name: 'users-mcp'");
+        expect(result).not.toContain("calculator-server");
       } finally {
         await fs.remove(projectDir);
       }

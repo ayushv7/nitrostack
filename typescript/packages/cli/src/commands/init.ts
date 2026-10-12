@@ -20,6 +20,11 @@ import {
 import { trackEvent, shutdownAnalytics } from '../analytics/posthog.js';
 import { runSkillsFlow } from '../skills/index.js';
 import { writeCanonicalGitignore } from '../pack/canonical-gitignore.js';
+import {
+  sanitizeServerName,
+  updateAppModuleServerName,
+  updateWidgetsPackageName,
+} from '../scaffold/template-sync.js';
 import readline from 'readline';
 
 /**
@@ -303,8 +308,15 @@ export async function initCommand(projectName: string | undefined, options: Init
     }
 
     // Synchronize MCP server identity and widget package name with final project name
-    updateAppModuleServerName(targetDir, finalProjectName);
-    updateWidgetsPackageName(targetDir, finalProjectName);
+    const sanitizedServerName = sanitizeServerName(finalProjectName);
+    const appModulePath = path.join(targetDir, 'src', 'app.module.ts');
+    if (fs.existsSync(appModulePath)) {
+      const serverNameUpdated = updateAppModuleServerName(targetDir, sanitizedServerName);
+      if (!serverNameUpdated) {
+        log(`Notice: Could not automatically update server name in src/app.module.ts. Please verify @McpApp server.name.`, 'warning');
+      }
+    }
+    updateWidgetsPackageName(targetDir, sanitizedServerName);
 
     spinner.succeed('Project created');
 
@@ -479,10 +491,11 @@ async function createProjectFromScratch(
   fs.writeJSONSync(path.join(targetDir, 'tsconfig.json'), tsconfig, { spaces: 2 });
   fs.mkdirSync(path.join(targetDir, 'src'), { recursive: true });
 
+  const safeServerName = sanitizeServerName(projectName);
   const indexTs = `import { createServer, Tool, z } from '@nitrostack/core';
 
 const server = createServer({
-  name: '${projectName}',
+  name: '${safeServerName}',
   version: '1.0.0',
   description: '${answers.description}',
 });
@@ -534,59 +547,11 @@ Built with [NitroStack](https://nitrostack.ai) ⚡
   fs.writeFileSync(path.join(targetDir, 'README.md'), readme);
 }
 
-/**
- * Safely replaces patterns in a file using a replacer callback to avoid regex substitution token issues.
- */
-function replaceInFile(
-  filePath: string,
-  regex: RegExp,
-  replacer: (substring: string, ...args: any[]) => string
-): boolean {
-  if (!fs.existsSync(filePath)) {
-    return false;
-  }
-  const original = fs.readFileSync(filePath, 'utf8');
-  const replaced = original.replace(regex, replacer);
-  if (replaced !== original) {
-    fs.writeFileSync(filePath, replaced, 'utf8');
-    return true;
-  }
-  return false;
-}
+// Re-export template synchronization helpers for backward compatibility and testing
+export {
+  sanitizeServerName,
+  replaceInFile,
+  updateAppModuleServerName,
+  updateWidgetsPackageName,
+} from '../scaffold/template-sync.js';
 
-/**
- * Updates the MCP server name in src/app.module.ts (or src/index.ts) to match the project name.
- */
-export function updateAppModuleServerName(targetDir: string, serverName: string): boolean {
-  const appModuleUpdated = replaceInFile(
-    path.join(targetDir, 'src', 'app.module.ts'),
-    /(server\s*:\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
-    (_, prefix, _oldName, suffix) => `${prefix}${serverName}${suffix}`
-  );
-
-  const indexTsUpdated = replaceInFile(
-    path.join(targetDir, 'src', 'index.ts'),
-    /(createServer\s*\(\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
-    (_, prefix, _oldName, suffix) => `${prefix}${serverName}${suffix}`
-  );
-
-  return appModuleUpdated || indexTsUpdated;
-}
-
-/**
- * Updates the widget package name in src/widgets/package.json if present.
- */
-export function updateWidgetsPackageName(targetDir: string, projectName: string): boolean {
-  const widgetsPkgPath = path.join(targetDir, 'src', 'widgets', 'package.json');
-  if (fs.existsSync(widgetsPkgPath)) {
-    try {
-      const pkg = fs.readJSONSync(widgetsPkgPath);
-      pkg.name = `${projectName}-widgets`;
-      fs.writeJSONSync(widgetsPkgPath, pkg, { spaces: 2 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
