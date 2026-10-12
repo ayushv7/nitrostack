@@ -19,6 +19,7 @@ import path from 'path';
 
 /**
  * Sanitizes a project name for use as an MCP server name:
+ * - Normalizes newlines, carriage returns, and tabs to spaces to prevent broken string literals
  * - Extracts the basename if a path was provided (e.g., './my-mcp' -> 'my-mcp')
  * - Strips single quotes, double quotes, backticks, and backslashes to ensure safe code interpolation
  * - Falls back to 'mcp-server' if empty after sanitization
@@ -27,13 +28,18 @@ export function sanitizeServerName(name: string): string {
   if (!name) {
     return 'mcp-server';
   }
-  const baseName = path.basename(name.trim());
+  const cleaned = name.replace(/[\r\n\t]+/g, ' ').trim();
+  if (!cleaned) {
+    return 'mcp-server';
+  }
+  const baseName = path.basename(cleaned);
   const sanitized = baseName.replace(/['"\\`]/g, '').trim();
   return sanitized || 'mcp-server';
 }
 
 /**
  * Converts a project name or arbitrary string into a valid npm package name:
+ * - Normalizes whitespace and line breaks
  * - Extracts basename if a path or scoped package is provided
  * - Converts to lowercase
  * - Replaces whitespace, underscores, and disallowed characters with hyphens
@@ -44,7 +50,11 @@ export function toValidNpmPackageName(name: string): string {
   if (!name) {
     return 'mcp-server';
   }
-  const baseName = path.basename(name.trim());
+  const cleaned = name.replace(/[\r\n\t]+/g, ' ').trim();
+  if (!cleaned) {
+    return 'mcp-server';
+  }
+  const baseName = path.basename(cleaned);
   const normalized = baseName
     .toLowerCase()
     .replace(/['"\\`]/g, '')

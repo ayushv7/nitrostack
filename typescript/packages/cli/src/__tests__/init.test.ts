@@ -68,6 +68,9 @@ describe('Init Command', () => {
       expect(sanitizeServerName('   spaced-server   ')).toBe('spaced-server');
       expect(sanitizeServerName('')).toBe('mcp-server');
       expect(sanitizeServerName("'''")).toBe('mcp-server');
+      expect(sanitizeServerName('my\nserver')).toBe('my server');
+      expect(sanitizeServerName('my\r\nserver')).toBe('my server');
+      expect(sanitizeServerName('\n\r\t')).toBe('mcp-server');
     });
   });
 
@@ -80,6 +83,8 @@ describe('Init Command', () => {
       expect(toValidNpmPackageName('   spaced-server   ')).toBe('spaced-server');
       expect(toValidNpmPackageName('')).toBe('mcp-server');
       expect(toValidNpmPackageName("'''")).toBe('mcp-server');
+      expect(toValidNpmPackageName('my\nserver')).toBe('my-server');
+      expect(toValidNpmPackageName('\n\r\t')).toBe('mcp-server');
     });
   });
 
@@ -191,6 +196,28 @@ export class AppModule {}`;
         const result = await fs.readFile(path.join(srcDir, 'app.module.ts'), 'utf-8');
         expect(result).toContain("name: 'special$pkg$1'");
         expect(result).not.toContain("name: 'calculator-server'");
+      } finally {
+        await fs.remove(projectDir);
+      }
+    });
+
+    it('normalizes newlines in project names to avoid multiline string syntax errors', async () => {
+      const { updateAppModuleServerName } = await import('../commands/init.js');
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-newlines-'));
+
+      try {
+        const srcDir = path.join(projectDir, 'src');
+        await fs.mkdir(srcDir, { recursive: true });
+
+        const content = `@McpApp({\n  server: {\n    name: 'calculator-server',\n    version: '1.0.0'\n  }\n})\nexport class AppModule {}`;
+        await fs.writeFile(path.join(srcDir, 'app.module.ts'), content, 'utf-8');
+
+        const updated = updateAppModuleServerName(projectDir, 'my\nserver');
+        expect(updated).toBe(true);
+
+        const result = await fs.readFile(path.join(srcDir, 'app.module.ts'), 'utf-8');
+        expect(result).toContain("name: 'my server'");
+        expect(result).not.toContain('\nserver');
       } finally {
         await fs.remove(projectDir);
       }
