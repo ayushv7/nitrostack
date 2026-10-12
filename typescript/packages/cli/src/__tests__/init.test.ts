@@ -151,6 +151,28 @@ export class AppModule {}`;
       }
     });
 
+    it('safely handles project names with special regex substitution tokens like $', async () => {
+      const { updateAppModuleServerName } = await import('../commands/init.js');
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-tokens-'));
+
+      try {
+        const srcDir = path.join(projectDir, 'src');
+        await fs.mkdir(srcDir, { recursive: true });
+
+        const content = `@McpApp({\n  server: {\n    name: 'calculator-server',\n    version: '1.0.0'\n  }\n})\nexport class AppModule {}`;
+        await fs.writeFile(path.join(srcDir, 'app.module.ts'), content, 'utf-8');
+
+        const updated = updateAppModuleServerName(projectDir, 'special$pkg$1');
+        expect(updated).toBe(true);
+
+        const result = await fs.readFile(path.join(srcDir, 'app.module.ts'), 'utf-8');
+        expect(result).toContain("name: 'special$pkg$1'");
+        expect(result).not.toContain("name: 'calculator-server'");
+      } finally {
+        await fs.remove(projectDir);
+      }
+    });
+
     it('returns false cleanly if no files exist', async () => {
       const { updateAppModuleServerName } = await import('../commands/init.js');
       const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-empty-'));

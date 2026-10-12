@@ -535,40 +535,42 @@ Built with [NitroStack](https://nitrostack.ai) ⚡
 }
 
 /**
+ * Safely replaces patterns in a file using a replacer callback to avoid regex substitution token issues.
+ */
+function replaceInFile(
+  filePath: string,
+  regex: RegExp,
+  replacer: (substring: string, ...args: any[]) => string
+): boolean {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+  const original = fs.readFileSync(filePath, 'utf8');
+  const replaced = original.replace(regex, replacer);
+  if (replaced !== original) {
+    fs.writeFileSync(filePath, replaced, 'utf8');
+    return true;
+  }
+  return false;
+}
+
+/**
  * Updates the MCP server name in src/app.module.ts (or src/index.ts) to match the project name.
  */
 export function updateAppModuleServerName(targetDir: string, serverName: string): boolean {
-  let updated = false;
+  const appModuleUpdated = replaceInFile(
+    path.join(targetDir, 'src', 'app.module.ts'),
+    /(server\s*:\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
+    (_, prefix, _oldName, suffix) => `${prefix}${serverName}${suffix}`
+  );
 
-  const appModulePath = path.join(targetDir, 'src', 'app.module.ts');
-  if (fs.existsSync(appModulePath)) {
-    const original = fs.readFileSync(appModulePath, 'utf8');
-    const replaced = original.replace(
-      /(server\s*:\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
-      `$1${serverName}$3`
-    );
-    if (replaced !== original) {
-      fs.writeFileSync(appModulePath, replaced, 'utf8');
-      updated = true;
-    }
-  }
+  const indexTsUpdated = replaceInFile(
+    path.join(targetDir, 'src', 'index.ts'),
+    /(createServer\s*\(\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
+    (_, prefix, _oldName, suffix) => `${prefix}${serverName}${suffix}`
+  );
 
-  const indexTsPath = path.join(targetDir, 'src', 'index.ts');
-  if (fs.existsSync(indexTsPath)) {
-    const original = fs.readFileSync(indexTsPath, 'utf8');
-    if (original.includes('createServer(')) {
-      const replaced = original.replace(
-        /(createServer\s*\(\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
-        `$1${serverName}$3`
-      );
-      if (replaced !== original) {
-        fs.writeFileSync(indexTsPath, replaced, 'utf8');
-        updated = true;
-      }
-    }
-  }
-
-  return updated;
+  return appModuleUpdated || indexTsUpdated;
 }
 
 /**
