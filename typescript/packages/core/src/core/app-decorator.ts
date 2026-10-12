@@ -284,9 +284,11 @@ export class McpApplicationFactory {
     }
 
     // Create server
+    const serverName = options.server?.name || process.env.npm_package_name || 'mcp-server';
+    const serverVersion = options.server?.version || process.env.npm_package_version || '1.0.0';
     const server = createServer({
-      name: options.server?.name || 'mcp-server',
-      version: options.server?.version || '1.0.0',
+      name: serverName,
+      version: serverVersion,
       ...(options.server?.protocolVersion ? { protocolVersion: options.server.protocolVersion } : {}),
       ...(options.server?.extensions ? { extensions: options.server.extensions } : {}),
       transforms: options.transforms || [],

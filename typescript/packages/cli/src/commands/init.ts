@@ -302,6 +302,10 @@ export async function initCommand(projectName: string | undefined, options: Init
       fs.writeJSONSync(packageJsonPath, packageJson, { spaces: 2 });
     }
 
+    // Synchronize MCP server identity and widget package name with final project name
+    updateAppModuleServerName(targetDir, finalProjectName);
+    updateWidgetsPackageName(targetDir, finalProjectName);
+
     spinner.succeed('Project created');
 
     // Agent skills prompt bypassed - installing project-level skills by default
@@ -528,4 +532,59 @@ Built with [NitroStack](https://nitrostack.ai) ⚡
 `;
 
   fs.writeFileSync(path.join(targetDir, 'README.md'), readme);
+}
+
+/**
+ * Updates the MCP server name in src/app.module.ts (or src/index.ts) to match the project name.
+ */
+export function updateAppModuleServerName(targetDir: string, serverName: string): boolean {
+  let updated = false;
+
+  const appModulePath = path.join(targetDir, 'src', 'app.module.ts');
+  if (fs.existsSync(appModulePath)) {
+    const original = fs.readFileSync(appModulePath, 'utf8');
+    const replaced = original.replace(
+      /(server\s*:\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
+      `$1${serverName}$3`
+    );
+    if (replaced !== original) {
+      fs.writeFileSync(appModulePath, replaced, 'utf8');
+      updated = true;
+    }
+  }
+
+  const indexTsPath = path.join(targetDir, 'src', 'index.ts');
+  if (fs.existsSync(indexTsPath)) {
+    const original = fs.readFileSync(indexTsPath, 'utf8');
+    if (original.includes('createServer(')) {
+      const replaced = original.replace(
+        /(createServer\s*\(\s*\{[^}]*?\bname\s*:\s*['"])([^'"]+)(['"])/s,
+        `$1${serverName}$3`
+      );
+      if (replaced !== original) {
+        fs.writeFileSync(indexTsPath, replaced, 'utf8');
+        updated = true;
+      }
+    }
+  }
+
+  return updated;
+}
+
+/**
+ * Updates the widget package name in src/widgets/package.json if present.
+ */
+export function updateWidgetsPackageName(targetDir: string, projectName: string): boolean {
+  const widgetsPkgPath = path.join(targetDir, 'src', 'widgets', 'package.json');
+  if (fs.existsSync(widgetsPkgPath)) {
+    try {
+      const pkg = fs.readJSONSync(widgetsPkgPath);
+      pkg.name = `${projectName}-widgets`;
+      fs.writeJSONSync(widgetsPkgPath, pkg, { spaces: 2 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }

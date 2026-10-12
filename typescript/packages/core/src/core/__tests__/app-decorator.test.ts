@@ -1,6 +1,6 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, afterEach } from '@jest/globals';
 import 'reflect-metadata';
-import { McpApp, getMcpAppMetadata, McpAppOptions } from '../app-decorator.js';
+import { McpApp, getMcpAppMetadata, McpAppOptions, McpApplicationFactory } from '../app-decorator.js';
 import { Module } from '../module.js';
 
 describe('App Decorator', () => {
@@ -76,6 +76,40 @@ describe('App Decorator', () => {
         it('should return undefined for non-decorated classes', () => {
             class RegularClass { }
             expect(getMcpAppMetadata(RegularClass)).toBeUndefined();
+        });
+    });
+
+    describe('McpApplicationFactory environment fallback', () => {
+        const originalPkgName = process.env.npm_package_name;
+        const originalPkgVersion = process.env.npm_package_version;
+
+        afterEach(() => {
+            if (originalPkgName !== undefined) {
+                process.env.npm_package_name = originalPkgName;
+            } else {
+                delete process.env.npm_package_name;
+            }
+            if (originalPkgVersion !== undefined) {
+                process.env.npm_package_version = originalPkgVersion;
+            } else {
+                delete process.env.npm_package_version;
+            }
+        });
+
+        it('should fall back to process.env.npm_package_name when server.name is omitted', async () => {
+            process.env.npm_package_name = 'env-inferred-server';
+            process.env.npm_package_version = '2.4.0';
+
+            @Module({ name: 'test-fallback' })
+            class FallbackModule { }
+
+            @McpApp({ module: FallbackModule })
+            class FallbackApp { }
+
+            const server = await McpApplicationFactory.create(FallbackApp);
+            const internal = server as any;
+            expect(internal.config.name).toBe('env-inferred-server');
+            expect(internal.config.version).toBe('2.4.0');
         });
     });
 });
