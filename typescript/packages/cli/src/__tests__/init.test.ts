@@ -71,6 +71,18 @@ describe('Init Command', () => {
     });
   });
 
+  describe('toValidNpmPackageName', () => {
+    it('converts names into npm-compliant package names', async () => {
+      const { toValidNpmPackageName } = await import('../commands/init.js');
+      expect(toValidNpmPackageName('Order Tracker')).toBe('order-tracker');
+      expect(toValidNpmPackageName('./path/to/My-MCP')).toBe('my-mcp');
+      expect(toValidNpmPackageName("User's App")).toBe('users-app');
+      expect(toValidNpmPackageName('   spaced-server   ')).toBe('spaced-server');
+      expect(toValidNpmPackageName('')).toBe('mcp-server');
+      expect(toValidNpmPackageName("'''")).toBe('mcp-server');
+    });
+  });
+
   describe('updateAppModuleServerName', () => {
     it('updates calculator-server in src/app.module.ts to the new project name', async () => {
       const { updateAppModuleServerName } = await import('../commands/init.js');
@@ -197,6 +209,46 @@ export class AppModule {}`;
     });
   });
 
+  describe('updateIndexTsServerName', () => {
+    it('updates createServer name in src/index.ts to the new project name', async () => {
+      const { updateIndexTsServerName } = await import('../commands/init.js');
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-index-ts-'));
+
+      try {
+        const srcDir = path.join(projectDir, 'src');
+        await fs.mkdir(srcDir, { recursive: true });
+
+        const content = `import { createServer } from '@nitrostack/core';
+const server = createServer({
+  name: 'default-mcp-server',
+  version: '1.0.0'
+});`;
+        await fs.writeFile(path.join(srcDir, 'index.ts'), content, 'utf-8');
+
+        const updated = updateIndexTsServerName(projectDir, 'my-custom-service');
+        expect(updated).toBe(true);
+
+        const result = await fs.readFile(path.join(srcDir, 'index.ts'), 'utf-8');
+        expect(result).toContain("name: 'my-custom-service'");
+        expect(result).not.toContain("name: 'default-mcp-server'");
+      } finally {
+        await fs.remove(projectDir);
+      }
+    });
+
+    it('returns false cleanly if src/index.ts does not exist', async () => {
+      const { updateIndexTsServerName } = await import('../commands/init.js');
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-no-index-'));
+
+      try {
+        const updated = updateIndexTsServerName(projectDir, 'any-name');
+        expect(updated).toBe(false);
+      } finally {
+        await fs.remove(projectDir);
+      }
+    });
+  });
+
   describe('updateWidgetsPackageName', () => {
     it('updates widget package.json name to ${projectName}-widgets', async () => {
       const { updateWidgetsPackageName } = await import('../commands/init.js');
@@ -218,6 +270,31 @@ export class AppModule {}`;
 
         const resultPkg = await fs.readJSON(path.join(widgetsDir, 'package.json'));
         expect(resultPkg.name).toBe('cool-analytics-widgets');
+      } finally {
+        await fs.remove(projectDir);
+      }
+    });
+
+    it('sanitizes names with spaces to produce valid npm package names', async () => {
+      const { updateWidgetsPackageName } = await import('../commands/init.js');
+      const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nitro-init-widgets-spaces-'));
+
+      try {
+        const widgetsDir = path.join(projectDir, 'src', 'widgets');
+        await fs.mkdir(widgetsDir, { recursive: true });
+
+        const pkgJson = {
+          name: 'calculator-widgets',
+          version: '0.1.0',
+          private: true
+        };
+        await fs.writeJSON(path.join(widgetsDir, 'package.json'), pkgJson);
+
+        const updated = updateWidgetsPackageName(projectDir, 'Order Tracker');
+        expect(updated).toBe(true);
+
+        const resultPkg = await fs.readJSON(path.join(widgetsDir, 'package.json'));
+        expect(resultPkg.name).toBe('order-tracker-widgets');
       } finally {
         await fs.remove(projectDir);
       }

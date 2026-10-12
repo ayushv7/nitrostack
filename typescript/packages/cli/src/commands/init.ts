@@ -22,7 +22,9 @@ import { runSkillsFlow } from '../skills/index.js';
 import { writeCanonicalGitignore } from '../pack/canonical-gitignore.js';
 import {
   sanitizeServerName,
+  toValidNpmPackageName,
   updateAppModuleServerName,
+  updateIndexTsServerName,
   updateWidgetsPackageName,
 } from '../scaffold/template-sync.js';
 import readline from 'readline';
@@ -316,6 +318,10 @@ export async function initCommand(projectName: string | undefined, options: Init
         log(`Notice: Could not automatically update server name in src/app.module.ts. Please verify @McpApp server.name.`, 'warning');
       }
     }
+    const indexTsPath = path.join(targetDir, 'src', 'index.ts');
+    if (fs.existsSync(indexTsPath)) {
+      updateIndexTsServerName(targetDir, sanitizedServerName);
+    }
     updateWidgetsPackageName(targetDir, sanitizedServerName);
 
     spinner.succeed('Project created');
@@ -550,8 +556,10 @@ Built with [NitroStack](https://nitrostack.ai) ⚡
 // Re-export template synchronization helpers for backward compatibility and testing
 export {
   sanitizeServerName,
+  toValidNpmPackageName,
   replaceInFile,
   updateAppModuleServerName,
+  updateIndexTsServerName,
   updateWidgetsPackageName,
 } from '../scaffold/template-sync.js';
 
