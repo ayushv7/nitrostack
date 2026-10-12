@@ -23,7 +23,8 @@
  *   node scripts/bump-beta.mjs --publish        # Full release: bump, build, test, and npm publish
  *   node scripts/bump-beta.mjs --publish --cli-only   # Quick 5-min release: only publish CLI
  *   node scripts/bump-beta.mjs --publish --skip-tests # Quick release without running tests
- *   node scripts/bump-beta.mjs 1.1.0-beta.X     # Bump to an explicit beta version
+ *   node scripts/bump-beta.mjs 1.1.1-beta.X     # Bump to an explicit beta version
+ *   node scripts/bump-beta.mjs 1.1.1            # Shorthand to start 1.1.1 beta series (1.1.1-beta.0)
  */
 
 import fs from 'node:fs';
@@ -63,8 +64,31 @@ function runOutput(cmd, cwd = rootDir) {
 // ============================================================================
 
 /**
+ * Normalizes user-supplied beta version:
+ * - "1.1.1" -> "1.1.1-beta.0"
+ * - "1.1.1-beta" -> "1.1.1-beta.0"
+ * - "1.1.1-beta.3" -> "1.1.1-beta.3"
+ * - "1.1.1-beta3" -> "1.1.1-beta.3"
+ */
+function normalizeBetaVersion(versionStr) {
+  if (typeof versionStr !== 'string') return null;
+  const trimmed = versionStr.trim();
+  if (/^(\d+)\.(\d+)\.(\d+)$/.test(trimmed)) {
+    return `${trimmed}-beta.0`;
+  }
+  if (/^(\d+)\.(\d+)\.(\d+)-beta$/i.test(trimmed)) {
+    return `${trimmed}.0`;
+  }
+  const match = trimmed.match(/^(\d+)\.(\d+)\.(\d+)-beta\.?(\d+)$/i);
+  if (match) {
+    return `${match[1]}.${match[2]}.${match[3]}-beta.${match[4]}`;
+  }
+  return trimmed;
+}
+
+/**
  * Validates that a string strictly adheres to the beta prerelease pattern:
- * e.g., 1.1.0-beta.1, 1.1.0-beta.2, 1.1.0-beta.10
+ * e.g., 1.1.0-beta.1, 1.1.0-beta.2, 1.1.1-beta.0
  */
 function isBetaVersion(versionStr) {
   if (typeof versionStr !== 'string') return false;
@@ -78,7 +102,7 @@ function isBetaVersion(versionStr) {
 function assertBetaOnly(versionStr, label = 'Version') {
   if (!isBetaVersion(versionStr)) {
     console.error(`\n❌ [PRODUCTION SAFETY HALT] ${label} "${versionStr}" is NOT a valid beta prerelease!`);
-    console.error(`   This script is strictly restricted to beta versions (e.g. 1.1.0-beta.X).`);
+    console.error(`   This script is strictly restricted to beta versions (e.g. 1.1.1-beta.X).`);
     console.error(`   Modifying or publishing production / stable releases via this script is strictly blocked.\n`);
     process.exit(1);
   }
@@ -97,6 +121,29 @@ function parseBetaVersion(versionStr) {
     prereleaseNum: parseInt(match[5], 10),
     raw: versionStr.trim()
   };
+}
+
+// Standard semver parser (e.g. "1.1.0", "1.1.0-beta.8")
+function parseSemver(versionStr) {
+  if (!versionStr) return null;
+  const match = versionStr.trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.]+))?$/);
+  if (!match) return null;
+  return {
+    major: parseInt(match[1], 10),
+    minor: parseInt(match[2], 10),
+    patch: parseInt(match[3], 10),
+    prerelease: match[4] || null,
+    raw: versionStr.trim()
+  };
+}
+
+function compareSemverBase(s1, s2) {
+  if (!s1 && !s2) return 0;
+  if (!s1) return -1;
+  if (!s2) return 1;
+  if (s1.major !== s2.major) return s1.major - s2.major;
+  if (s1.minor !== s2.minor) return s1.minor - s2.minor;
+  return s1.patch - s2.patch;
 }
 
 function compareBetaVersions(v1, v2) {
@@ -132,7 +179,8 @@ async function main() {
   const skipTests = args.includes('--skip-tests');
   const shouldBuild = args.includes('--build') || args.includes('--test') || shouldPublish || isDryRun;
   const shouldTest = (args.includes('--test') || shouldPublish) && !skipTests;
-  const explicitVersion = args.find(arg => !arg.startsWith('--'));
+  const rawExplicit = args.find(arg => !arg.startsWith('--'));
+  const explicitVersion = rawExplicit ? normalizeBetaVersion(rawExplicit) : null;
 
   console.log('======================================================');
   console.log(' NitroStack Beta Release Automation');
@@ -194,20 +242,16 @@ async function main() {
     candidateBetaVersions.push(remoteCliBeta);
   }
 
-  if (candidateBetaVersions.length === 0) {
-    console.error('\n❌ Error: No existing beta versions found locally or on npm.');
-    console.error('   To start a new beta series, pass an explicit beta version: node scripts/bump-beta.mjs 1.1.0-beta.0\n');
-    process.exit(1);
-  }
-
-  let highestBeta = candidateBetaVersions[0];
+  let highestBeta = candidateBetaVersions.length > 0 ? candidateBetaVersions[0] : null;
   for (const candidate of candidateBetaVersions.slice(1)) {
     if (compareBetaVersions(candidate, highestBeta) > 0) {
       highestBeta = candidate;
     }
   }
 
-  console.log(`\nHighest active beta version: ${highestBeta}`);
+  if (highestBeta) {
+    console.log(`\nHighest active beta version: ${highestBeta}`);
+  }
 
   // 4. Calculate next version
   let nextVersion;
@@ -216,8 +260,35 @@ async function main() {
     nextVersion = explicitVersion;
     console.log(`Using explicit beta version: ${nextVersion}`);
   } else {
-    nextVersion = incrementBeta(highestBeta);
-    console.log(`Calculated next beta version: ${nextVersion}`);
+    const parsedLatest = parseSemver(remoteLatest);
+    const parsedHighestBeta = highestBeta ? parseBetaVersion(highestBeta) : null;
+
+    // Check if live production latest is >= highest beta's base version.
+    // For example, if latest is 1.1.0 and highest beta was 1.1.0-beta.8:
+    // the 1.1.0 release is already live in production, so any further 1.1.0-beta.X
+    // is semver-inferior (< 1.1.0). The beta track MUST advance past latest (to 1.1.1-beta.0).
+    if (parsedLatest && (!parsedHighestBeta || compareSemverBase(parsedLatest, parsedHighestBeta) >= 0)) {
+      const isMinor = args.includes('--minor');
+      const isMajor = args.includes('--major');
+      let nextBase;
+      if (isMajor) {
+        nextBase = `${parsedLatest.major + 1}.0.0`;
+      } else if (isMinor) {
+        nextBase = `${parsedLatest.major}.${parsedLatest.minor + 1}.0`;
+      } else {
+        nextBase = `${parsedLatest.major}.${parsedLatest.minor}.${parsedLatest.patch + 1}`;
+      }
+      nextVersion = `${nextBase}-beta.0`;
+      console.log(`\nℹ️  Live npm latest (${remoteLatest}) meets or supersedes highest beta (${highestBeta || 'none'}).`);
+      console.log(`   Advancing to next prerelease series: ${nextVersion}`);
+    } else if (highestBeta) {
+      nextVersion = incrementBeta(highestBeta);
+      console.log(`Calculated next beta version: ${nextVersion}`);
+    } else {
+      console.error('\n❌ Error: No existing beta versions found locally or on npm, and unable to deduce next version from latest.');
+      console.error('   To start a new beta series, pass an explicit beta version: node scripts/bump-beta.mjs 1.1.1-beta.0\n');
+      process.exit(1);
+    }
   }
 
   // Safety Assertion before any action
@@ -322,7 +393,7 @@ async function main() {
   console.log(` ✓ Successfully prepared beta version: ${nextVersion}`);
   console.log('======================================================');
   console.log('\n🚨 PRODUCTION SAFETY RULES:');
-  console.log(`  • Stable production users remain on "latest" (${remoteLatest || '1.0.17'}).`);
+  console.log(`  • Stable production users remain on "latest" (${remoteLatest || '1.1.0'}).`);
   console.log('  • You MUST pass "--tag beta" when publishing. NEVER publish without "--tag beta"!\n');
 
   if (!shouldPublish && !isDryRun) {
@@ -335,7 +406,7 @@ async function main() {
     console.log(`  2. Publish (MUST use --tag beta):`);
     console.log(`     cd typescript/packages/core && npm publish --tag beta --access public`);
     console.log(`     cd ../cli && npm publish --tag beta --access public`);
-    console.log(`  3. Verify npm dist-tags (confirm "latest" is still ${remoteLatest || '1.0.17'}):`);
+    console.log(`  3. Verify npm dist-tags (confirm "latest" is still ${remoteLatest || '1.1.0'}):`);
     console.log(`     npm view @nitrostack/core dist-tags`);
     console.log(`     npm view @nitrostack/cli dist-tags`);
   }
@@ -343,7 +414,7 @@ async function main() {
   console.log(`  Git Commit & Tag:`);
   console.log(`     git commit -am "chore: release ${nextVersion}"`);
   console.log(`     git tag v${nextVersion}`);
-  console.log(`     git push origin ${currentBranch || 'feat/code-mode-transform-pipeline'} v${nextVersion}`);
+  console.log(`     git push origin ${currentBranch || 'develop'} v${nextVersion}`);
 }
 
 main().catch(err => {
