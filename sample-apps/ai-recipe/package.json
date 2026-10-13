@@ -1,0 +1,47 @@
+{
+  "name": "ai-recipe-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI Recipe Assistant MCP Server",
+  "scripts": {
+    "dev": "nitrostack-cli dev",
+    "build": "nitrostack-cli build",
+    "start": "npm run build && nitrostack-cli start",
+    "start:prod": "nitrostack-cli start",
+    "upgrade": "nitrostack-cli upgrade",
+    "install:all": "npm install && npm --prefix src/widgets install",
+    "widget": "npm --prefix src/widgets run build",
+    "widget:dev": "npm --prefix src/widgets run dev"
+  },
+  "keywords": [
+    "nitrostack",
+    "mcp",
+    "recipe",
+    "recipe-assistant",
+    "widgets"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": ">=0.1.0",
+    "@nitrostack/core": "^1.0.14",
+    "@nitrostack/widgets": "^1.0.8",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.3.1",
+    "next": "^16.2.11",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@nitrostack/cli": "^1.0.15",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  },
+  "nitrostack": {
+    "skillsVersion": "1.0.0"
+  }
+}
