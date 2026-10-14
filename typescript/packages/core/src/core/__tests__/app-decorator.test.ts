@@ -145,4 +145,14 @@ describe('App Decorator', () => {
             }
         });
     });
+
+    describe('package entry exports', () => {
+        it('exports resolveServerIdentity and readLocalPackageManifest from core index', async () => {
+            const index = await import('../index.js');
+            expect(typeof index.resolveServerIdentity).toBe('function');
+            expect(typeof index.readLocalPackageManifest).toBe('function');
+            expect(index.resolveServerIdentity).toBe(resolveServerIdentity);
+            expect(index.readLocalPackageManifest).toBe(readLocalPackageManifest);
+        });
+    });
 });
