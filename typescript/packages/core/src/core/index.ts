@@ -226,8 +226,14 @@ export { ConfigModule, ConfigService } from './config-module.js';
 export type { ConfigModuleOptions } from './config-module.js';
 
 // ========== V3 Application Bootstrap ==========
-export { McpApp, McpApplicationFactory, getMcpAppMetadata } from './app-decorator.js';
-export type { McpAppOptions } from './app-decorator.js';
+export {
+  McpApp,
+  McpApplicationFactory,
+  getMcpAppMetadata,
+  resolveServerIdentity,
+  readLocalPackageManifest,
+} from './app-decorator.js';
+export type { McpAppOptions, PackageIdentity } from './app-decorator.js';
 
 // ========== V3 Lifecycle Hooks ==========
 export { triggerLifecycleHook } from './lifecycle.js';

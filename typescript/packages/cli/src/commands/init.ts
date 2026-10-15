@@ -20,6 +20,14 @@ import {
 import { trackEvent, shutdownAnalytics } from '../analytics/posthog.js';
 import { runSkillsFlow } from '../skills/index.js';
 import { writeCanonicalGitignore } from '../pack/canonical-gitignore.js';
+import {
+  jsStringLiteral,
+  sanitizeServerName,
+  toValidNpmPackageName,
+  updateAppModuleServerName,
+  updateIndexTsServerName,
+  updateWidgetsPackageName,
+} from '../scaffold/template-sync.js';
 import readline from 'readline';
 
 /**
@@ -296,10 +304,28 @@ export async function initCommand(projectName: string | undefined, options: Init
     const packageJsonPath = path.join(targetDir, 'package.json');
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = fs.readJSONSync(packageJsonPath);
-      packageJson.name = finalProjectName;
+      packageJson.name = toValidNpmPackageName(finalProjectName);
       packageJson.description = finalDescription;
       packageJson.author = finalAuthor;
       fs.writeJSONSync(packageJsonPath, packageJson, { spaces: 2 });
+    }
+
+    // Synchronize MCP server identity and widget package name with final project name
+    const sanitizedServerName = sanitizeServerName(finalProjectName);
+    const appModulePath = path.join(targetDir, 'src', 'app.module.ts');
+    if (fs.existsSync(appModulePath)) {
+      const serverNameUpdated = updateAppModuleServerName(targetDir, sanitizedServerName);
+      if (!serverNameUpdated) {
+        log(`Notice: Could not automatically update server name in src/app.module.ts. Please verify @McpApp server.name.`, 'warning');
+      }
+    }
+    const indexTsPath = path.join(targetDir, 'src', 'index.ts');
+    if (fs.existsSync(indexTsPath)) {
+      updateIndexTsServerName(targetDir, sanitizedServerName);
+    }
+    const widgetsPkgPath = path.join(targetDir, 'src', 'widgets', 'package.json');
+    if (fs.existsSync(widgetsPkgPath) && !updateWidgetsPackageName(targetDir, finalProjectName)) {
+      log(`Notice: Could not automatically update name in src/widgets/package.json.`, 'warning');
     }
 
     spinner.succeed('Project created');
@@ -434,7 +460,7 @@ async function createProjectFromScratch(
   answers: ProjectAnswers
 ) {
   const packageJson = {
-    name: projectName,
+    name: toValidNpmPackageName(projectName),
     version: '1.0.0',
     description: answers.description,
     author: answers.author,
@@ -475,12 +501,13 @@ async function createProjectFromScratch(
   fs.writeJSONSync(path.join(targetDir, 'tsconfig.json'), tsconfig, { spaces: 2 });
   fs.mkdirSync(path.join(targetDir, 'src'), { recursive: true });
 
+  const safeServerName = sanitizeServerName(projectName);
   const indexTs = `import { createServer, Tool, z } from '@nitrostack/core';
 
 const server = createServer({
-  name: '${projectName}',
+  name: ${jsStringLiteral(safeServerName)},
   version: '1.0.0',
-  description: '${answers.description}',
+  description: ${jsStringLiteral(answers.description)},
 });
 
 server.tool(
@@ -529,3 +556,4 @@ Built with [NitroStack](https://nitrostack.ai) ⚡
 
   fs.writeFileSync(path.join(targetDir, 'README.md'), readme);
 }
+

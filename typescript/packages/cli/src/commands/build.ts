@@ -17,7 +17,36 @@ import {
 } from '../ui/branding.js';
 import { trackEvent, shutdownAnalytics } from '../analytics/posthog.js';
 
-interface BuildOptions {
+export function createWidgetEntryCode(entryPoint: string): string {
+  const normalizedPath = entryPoint.replace(/\\/g, '/');
+  return `
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import WidgetPage from ${JSON.stringify(normalizedPath)};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+function init() {
+  const data = window.openai?.toolOutput || {};
+  
+  let root = document.getElementById('widget-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'widget-root';
+    document.body.appendChild(root);
+  }
+  
+  const reactRoot = createRoot(root);
+  reactRoot.render(React.createElement(WidgetPage, { data }));
+}
+`;
+}
+
+export interface BuildOptions {
   output: string;
 }
 
@@ -97,7 +126,7 @@ export async function buildCommand(options: BuildOptions) {
               widgetPages.push({
                 name: widgetName,
                 entryPoint: fullPath,
-                outputName: widgetName.replace(/\//g, '-')
+                outputName: widgetName.replace(/[/\\]+/g, '-')
               });
             }
           }
@@ -125,31 +154,7 @@ export async function buildCommand(options: BuildOptions) {
           const jsOutput = path.join(OUT_DIR, `${widget.outputName}.js`);
           const htmlOutput = path.join(OUT_DIR, `${widget.outputName}.html`);
 
-          const entryCode = `
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import WidgetPage from '${widget.entryPoint.replace(/\\/g, '/')}';
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
-
-function init() {
-  const data = window.openai?.toolOutput || {};
-  
-  let root = document.getElementById('widget-root');
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'widget-root';
-    document.body.appendChild(root);
-  }
-  
-  const reactRoot = createRoot(root);
-  reactRoot.render(React.createElement(WidgetPage, { data }));
-}
-`;
+          const entryCode = createWidgetEntryCode(widget.entryPoint);
 
           fs.writeFileSync(tempEntry, entryCode);
 
